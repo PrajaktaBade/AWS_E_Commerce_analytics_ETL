@@ -1,0 +1,8 @@
+#weight = input('Enter your weight:')
+#height = input('Enter your height: ')
+#BMI = weight /(height)^2
+#print(BMI)
+
+name = input('Enter your name: ')
+name1 = name.replace("a", "b")
+print(name1)

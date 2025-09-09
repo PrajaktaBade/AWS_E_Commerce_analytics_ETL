@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Free Tier-compatible Redshift cluster for Cafe Sales ETL
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: Name of the S3 bucket with raw data
+
+Resources:
+
+  RedshiftClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: RedshiftS3AccessRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: redshift.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+  RedshiftCluster:
+    Type: AWS::Redshift::Cluster
+    Properties:
+      ClusterIdentifier: cafe-redshift
+      DBName: cafedb
+      MasterUsername: adminuser
+      MasterUserPassword: AdminPassw0rd!
+      NodeType: dc2.large            # Free Tier trial eligible
+      NumberOfNodes: 1               # Single-node
+      IamRoles:
+        - !GetAtt RedshiftClusterRole.Arn
+      PubliclyAccessible: true
+      ClusterType: single-node
+
+Outputs:
+  ClusterEndpoint:
+    Description: Redshift cluster endpoint
+    Value: !GetAtt RedshiftCluster.Endpoint.Address
+
+  ClusterRoleArn:
+    Description: IAM Role ARN for Redshift
+    Value: !GetAtt RedshiftClusterRole.Arn

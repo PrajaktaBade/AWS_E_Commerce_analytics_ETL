@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Free-Tier ETL Pipeline (S3 → Lambda → Athena)
+
+Resources:
+  RawDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: ana-raw-dev-prajakta
+
+  CuratedDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: ana-curated-dev
+
+  LogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: ana-logs-dev
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ana-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  ETLLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ana-etl-func
+      Runtime: python3.9
+      Handler: lambda_etl.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3, csv, io
+
+          def lambda_handler(event, context):
+              s3 = boto3.client("s3")
+              for record in event["Records"]:
+                  bucket = record["s3"]["bucket"]["name"]
+                  key = record["s3"]["object"]["key"]
+
+                  obj = s3.get_object(Bucket=bucket, Key=key)
+                  raw_data = obj["Body"].read().decode("utf-8").splitlines()
+
+                  reader = csv.reader(raw_data)
+                  cleaned_rows = []
+                  for row in reader:
+                      if row and len(row) >= 4:
+                          cleaned_rows.append(row)
+
+                  output = io.StringIO()
+                  writer = csv.writer(output)
+                  writer.writerows(cleaned_rows)
+                  s3.put_object(
+                      Bucket="ana-curated-dev",
+                      Key=key,
+                      Body=output.getvalue()
+                  )
+              return {"status": "done"}
+
+  S3TriggerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ETLLambdaFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt RawDataBucket.Arn
+
+  # Correct way to attach Lambda notification to an existing bucket
+  S3BucketNotification:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref RawDataBucket
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:*"
+            Function: !GetAtt ETLLambdaFunction.Arn
+
+Outputs:
+  RawBucketName:
+    Description: Raw data bucket
+    Value: !Ref RawDataBucket
+  CuratedBucketName:
+    Description: Curated data bucket
+    Value: !Ref CuratedDataBucket
+  LogsBucketName:
+    Description: Logs bucket
+    Value: !Ref LogsBucket
+  LambdaFunctionName:
+    Description: ETL Lambda function
+    Value: !Ref ETLLambdaFunction

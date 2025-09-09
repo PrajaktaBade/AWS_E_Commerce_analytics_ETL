@@ -1,0 +1,3 @@
+This is namaste sql course.
+This is python course.
+This assignment is part of day 4 lecture.

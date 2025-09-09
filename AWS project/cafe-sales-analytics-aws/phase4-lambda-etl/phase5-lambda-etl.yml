@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Lambda ETL for Café Sales Analytics
+
+Parameters:
+  LambdaRoleArn:
+    Type: String
+    Description: ARN of the IAM role for Lambda with S3 & Redshift access
+  S3BucketName:
+    Type: String
+    Description: Name of the S3 bucket with raw sales CSVs
+  LambdaCodeS3Key:
+    Type: String
+    Description: S3 Key (zip file) containing Lambda code
+
+Resources:
+
+  CafeSalesLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: cafe-sales-etl
+      Runtime: python3.13
+      Handler: lambda_function.lambda_handler
+      Role: !Ref LambdaRoleArn
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: !Ref LambdaCodeS3Key
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          REDSHIFT_DB: cafedb
+          REDSHIFT_USER: your_redshift_user
+          REDSHIFT_PASSWORD: your_redshift_password
+          REDSHIFT_HOST: your_redshift_host
+          REDSHIFT_PORT: '5439'
+
+  LambdaS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CafeSalesLambda
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::${S3BucketName}
+
+  S3EventNotification:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt CafeSalesLambda.Arn
